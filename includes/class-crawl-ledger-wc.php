@@ -516,11 +516,73 @@ final class Integration {
 		}
 
 		$out['woocommerce'] = [
-			'totals'   => array_map( 'intval', (array) $totals ),
-			'products' => $products,
+			'totals'     => array_map( 'intval', (array) $totals ),
+			'products'   => $products,
+			'categories' => $this->category_hits( $since ),
 		];
 
 		return $out;
+	}
+
+	/**
+	 * Bot hits on product category archives (logged by Crawl Ledger 1.0.2+ with "log_archives").
+	 * Archive hits have post_id = 0, so they are matched by path.
+	 */
+	private function category_hits( string $since ): array {
+		global $wpdb;
+
+		$terms = get_terms( [ 'taxonomy' => 'product_cat', 'hide_empty' => false, 'number' => 1000 ] );
+		if ( is_wp_error( $terms ) || ! $terms ) {
+			return [];
+		}
+
+		$by_path = [];
+		foreach ( $terms as $term ) {
+			$link = get_term_link( $term );
+			if ( is_string( $link ) ) {
+				$path             = (string) wp_parse_url( $link, PHP_URL_PATH );
+				$by_path[ $path ] = $term;
+			}
+		}
+		if ( ! $by_path ) {
+			return [];
+		}
+
+		$hits = Analytics::table();
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT path, COUNT(*) AS hits, SUM(category LIKE 'ai-%%') AS ai_hits, COUNT(DISTINCT NULLIF(bot, '')) AS bots, MAX(hit_at) AS last_hit
+				FROM {$hits} WHERE hit_at >= %s AND post_id = 0 AND endpoint = 'html' AND path <> '/'
+				GROUP BY path ORDER BY hits DESC LIMIT 200",
+				$since
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		$out = [];
+		foreach ( (array) $rows as $r ) {
+			$path = (string) $r['path'];
+			// Paginated archives (/category/page/2/) count towards the category.
+			$base = (string) preg_replace( '#/page/\d+/?$#', '/', $path );
+			$term = $by_path[ $path ] ?? $by_path[ $base ] ?? null;
+			if ( ! $term instanceof \WP_Term ) {
+				continue;
+			}
+			$id = (int) $term->term_id;
+			if ( ! isset( $out[ $id ] ) ) {
+				$out[ $id ] = [ 'term_id' => $id, 'name' => $term->name, 'url' => (string) get_term_link( $term ), 'hits' => 0, 'ai_hits' => 0, 'bots' => 0, 'last_hit' => '' ];
+			}
+			$out[ $id ]['hits']    += (int) $r['hits'];
+			$out[ $id ]['ai_hits'] += (int) $r['ai_hits'];
+			$out[ $id ]['bots']     = max( $out[ $id ]['bots'], (int) $r['bots'] );
+			$out[ $id ]['last_hit'] = max( $out[ $id ]['last_hit'], (string) $r['last_hit'] );
+		}
+
+		usort( $out, static fn( $a, $b ) => [ $b['ai_hits'], $b['hits'] ] <=> [ $a['ai_hits'], $a['hits'] ] );
+
+		return array_slice( $out, 0, 25 );
 	}
 
 	public function render_analytics( array $report, int $days ): void {
@@ -542,6 +604,7 @@ final class Integration {
 			);
 			?>
 		</p>
+		<?php $this->render_chart( $wc['products'] ); ?>
 		<table class="widefat striped" style="max-width:1100px">
 			<thead>
 				<tr>
@@ -571,6 +634,65 @@ final class Integration {
 			<?php endforeach; ?>
 			</tbody>
 		</table>
+
+		<h2><?php esc_html_e( 'WooCommerce: product categories fetched by bots', 'crawl-ledger-woocommerce' ); ?></h2>
+		<?php if ( ! Plugin::setting( 'log_archives' ) || version_compare( CRAWL_LEDGER_VERSION, '1.0.2', '<' ) ) : ?>
+			<p class="description"><?php esc_html_e( 'Requires Crawl Ledger 1.0.2+ with "Include archives" enabled in Settings → Analytics.', 'crawl-ledger-woocommerce' ); ?></p>
+		<?php else : ?>
+			<table class="widefat striped" style="max-width:1100px">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Category', 'crawl-ledger-woocommerce' ); ?></th>
+						<th><?php esc_html_e( 'Bot hits', 'crawl-ledger-woocommerce' ); ?></th>
+						<th><?php esc_html_e( 'AI hits', 'crawl-ledger-woocommerce' ); ?></th>
+						<th><?php esc_html_e( 'Distinct bots', 'crawl-ledger-woocommerce' ); ?></th>
+						<th><?php esc_html_e( 'Last hit (UTC)', 'crawl-ledger-woocommerce' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+				<?php if ( empty( $wc['categories'] ) ) : ?>
+					<tr><td colspan="5"><?php esc_html_e( 'No category hits yet — archives are logged from Crawl Ledger 1.0.2 onwards.', 'crawl-ledger-woocommerce' ); ?></td></tr>
+				<?php endif; ?>
+				<?php foreach ( (array) ( $wc['categories'] ?? [] ) as $c ) : ?>
+					<tr>
+						<td><a href="<?php echo esc_url( $c['url'] ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $c['name'] ); ?></a></td>
+						<td><?php echo esc_html( number_format_i18n( $c['hits'] ) ); ?></td>
+						<td><?php echo esc_html( number_format_i18n( $c['ai_hits'] ) ); ?></td>
+						<td><?php echo esc_html( number_format_i18n( $c['bots'] ) ); ?></td>
+						<td><?php echo esc_html( $c['last_hit'] ? $c['last_hit'] : '—' ); ?></td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+		<?php
+	}
+
+	/** Horizontal bar chart of the top products (uses Chart.js bundled with Crawl Ledger 1.0.2+). */
+	private function render_chart( array $products ): void {
+		if ( ! $products || ! wp_script_is( 'crawl-ledger-chartjs', 'registered' ) ) {
+			return;
+		}
+		$top = array_slice( $products, 0, 10 );
+		wp_enqueue_script( 'crawl-ledger-wc-chart', plugins_url( 'assets/js/wc-chart.js', CRAWL_LEDGER_WC_FILE ), [ 'crawl-ledger-chartjs' ], CRAWL_LEDGER_WC_VERSION, true );
+
+		$payload = [
+			'labels' => array_map( static fn( $p ) => wp_html_excerpt( '' !== $p['title'] ? $p['title'] : '#' . $p['post_id'], 60, '…' ), $top ),
+			'ai'     => array_map( static fn( $p ) => (int) $p['ai_hits'], $top ),
+			'other'  => array_map( static fn( $p ) => max( 0, (int) $p['hits'] - (int) $p['ai_hits'] ), $top ),
+			'i18n'   => [
+				'ai'    => __( 'AI bots', 'crawl-ledger-woocommerce' ),
+				'other' => __( 'Other bots', 'crawl-ledger-woocommerce' ),
+			],
+		];
+		$height = 60 + 34 * count( $top );
+		?>
+		<div style="max-width:1100px;background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:16px;box-sizing:border-box;margin:0 0 16px">
+			<div style="position:relative;height:<?php echo (int) $height; ?>px">
+				<canvas id="cl-wc-chart" role="img" aria-label="<?php esc_attr_e( 'Top products fetched by bots', 'crawl-ledger-woocommerce' ); ?>"></canvas>
+			</div>
+		</div>
+		<script type="application/json" id="cl-wc-data"><?php echo wp_json_encode( $payload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE ); ?></script>
 		<?php
 	}
 

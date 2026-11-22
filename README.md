@@ -2,12 +2,12 @@
 
 WooCommerce module for **[Crawl Ledger](https://github.com/pavcieslak/Crawl-Ledger)**: turns product pages into rich Markdown for AI shopping agents and shows which products AI bots actually read.
 
-Requires **Crawl Ledger 1.0.1+**, **WooCommerce 8.0+**, WordPress 6.2+, PHP 8.1+. HPOS and block cart/checkout compatible (it only reads products).
+Requires **Crawl Ledger 1.0.1+** (1.0.2+ recommended for charts and category analytics), **WooCommerce 8.0+** (tested up to 11.3), WordPress 6.2+, PHP 8.1+. HPOS and block cart/checkout compatible (it only reads products).
 
 ## Installation
 
-1. Install and activate [Crawl Ledger](https://github.com/pavcieslak/Crawl-Ledger) (1.0.1 or newer).
-2. Download [`dist/crawl-ledger-woocommerce-1.0.0.zip`](https://github.com/pavcieslak/Crawl-Ledger-WooCommerce/raw/main/dist/crawl-ledger-woocommerce-1.0.0.zip) → *Plugins → Add New → Upload Plugin* → activate.
+1. Install and activate [Crawl Ledger](https://github.com/pavcieslak/Crawl-Ledger) (1.0.2 recommended).
+2. Download [`dist/crawl-ledger-woocommerce-1.0.1.zip`](https://github.com/pavcieslak/Crawl-Ledger-WooCommerce/raw/main/dist/crawl-ledger-woocommerce-1.0.1.zip) → *Plugins → Add New → Upload Plugin* → activate.
 3. *Settings → Crawl Ledger* → tick **Products** in *Post types* → save. WooCommerce options appear in the same form.
 
 If Crawl Ledger or WooCommerce is missing, the module stays inactive and shows an admin notice.
@@ -82,7 +82,13 @@ Screw-top jar for preserves.
 
 **Always fresh** — price, sale, stock and variation prices are part of the cache key, so documents update when an order changes stock or a scheduled sale starts, without editing the product. Stock-status changes and scheduled sales also rebuild `llms.txt`.
 
-**Analytics** — *Settings → Crawl Ledger → Analytics* gets a *WooCommerce* section: AI hits per product, live assistant fetches (`ChatGPT-User`, `Claude-User`, `Perplexity-User` — someone asked an AI about your product right now), Markdown hits, last AI visit. The same data is added to the REST report under `woocommerce`:
+**Analytics** — *Settings → Crawl Ledger → Analytics* gets a *WooCommerce* section:
+
+- **Top products chart** (Chart.js bundled with Crawl Ledger 1.0.2+): the ten most-fetched products, AI bots vs other bots.
+- **Products table:** AI hits per product, live assistant fetches (`ChatGPT-User`, `Claude-User`, `Perplexity-User` — someone asked an AI about your product right now), Markdown hits, last AI visit.
+- **Product categories table:** bot and AI hits per product category (paginated archives count towards their category). Requires Crawl Ledger 1.0.2+ with *Include archives* enabled.
+
+The same data is added to the REST report under `woocommerce` (`totals`, `products`, `categories`):
 
 ```bash
 curl -u "login:app-password" "https://shop.example/wp-json/crawl-ledger/v1/stats?days=30" | jq .woocommerce
@@ -105,6 +111,10 @@ curl -u "login:app-password" "https://shop.example/wp-json/crawl-ledger/v1/stats
 | `crawl_ledger_wc_product_data( array $data, WC_Product $product )` | Modify normalized product data before it is rendered. |
 
 All other customization goes through the Crawl Ledger core filters.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

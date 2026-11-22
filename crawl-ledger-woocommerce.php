@@ -3,7 +3,7 @@
  * Plugin Name:       Crawl Ledger for WooCommerce
  * Plugin URI:        https://github.com/pavcieslak/Crawl-Ledger
  * Description:       WooCommerce module for Crawl Ledger — adds price, currency, availability, SKU, GTIN, brand, attributes and variants to product Markdown, hides cart/checkout/account pages from AI agents and reports which products AI bots fetch.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.2
  * Requires PHP:      8.1
  * Requires Plugins:  woocommerce
@@ -13,7 +13,7 @@
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       crawl-ledger-woocommerce
  * WC requires at least: 8.0
- * WC tested up to:   10.3
+ * WC tested up to:   11.3
  *
  * @package CrawlLedger\WooCommerce
  */
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CRAWL_LEDGER_WC_VERSION', '1.0.0' );
+define( 'CRAWL_LEDGER_WC_VERSION', '1.0.1' );
 define( 'CRAWL_LEDGER_WC_FILE', __FILE__ );
 define( 'CRAWL_LEDGER_WC_PATH', plugin_dir_path( __FILE__ ) );
 define( 'CRAWL_LEDGER_WC_MIN_CORE', '1.0.1' );
